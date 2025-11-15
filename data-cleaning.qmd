@@ -3,3 +3,68 @@ title: Data Cleaning
 format: typst
 ---
 
+```{r}
+library(tidyverse)
+library(janitor)
+g24raw <- read.csv("data/g24_sov_by_g24_svprec.csv") #reading in the csv
+g24 <- g24raw |> janitor::clean_names() #using clean names from janitor to make the column names easier to work with
+char_cols <- g24 |>
+  select(where(is.character)) |>
+  names()
+vote_cols <- char_cols[str_detect(char_cols, "ass|cng|prs|pr_|sen|usp|uss")] #many of the columns were character vectors that should have been numeric, especially ones that were vote counts. I selected these columns and replaced them to become numberic values
+g24 <- g24 |>
+  mutate(across(all_of(vote_cols), ~ as.numeric(str_replace_all(., "[^0-9]", ""))))
+nrow(g24) == n_distinct(g24$svprec_key)
+```
+
+
+```{r}
+library(sf)
+library(dplyr)
+library(readr)
+library(janitor)
+
+votesg24 <- read_csv("data/g24_sov_by_g24_svprec.csv") |>
+  clean_names()
+
+prec_sf <- st_read("data/srprec_state_g24_v01_shp/srprec_state_g24_v01_shp.shp") |>
+  clean_names()
+
+
+ab604 <- st_read("data/AB604/AB604.shp") |>
+  clean_names()
+
+prec_sf <- prec_sf |>
+  st_transform(st_crs(ab604)) |>
+  mutate(prec_area = st_area(geometry))
+
+
+prec_votes <- prec_sf |>
+  left_join(votesg24, by = c("srprec_key" = "svprec_key"))
+
+prec_x_ab604 <- st_intersection(
+  prec_votes,
+  ab604 |> select(district, geometry)
+)
+
+prec_x_ab604 <- prec_x_ab604 |>
+  mutate(
+    inter_area = st_area(geometry),
+    weight     = as.numeric(inter_area / prec_area)
+  )
+
+vote_cols <- c("totreg", "totvote")
+
+prec_x_ab604 <- prec_x_ab604 |>
+  mutate(
+    across(all_of(vote_cols), ~ . * weight)
+  )
+
+ab604_results <- prec_x_ab604 |>
+  st_drop_geometry() |>
+  group_by(district) |>
+  summarise(across(all_of(vote_cols), \(x) sum(x, na.rm = TRUE)), .groups = "drop")
+
+ab604_results
+
+```

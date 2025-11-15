@@ -5,7 +5,56 @@ format: typst
 
 ### 2024 Election Results and the 2024 District Map
 
+```{r}
+congressional <- g24 |> 
+    janitor::clean_names() |>
+    select(county, cddist, cngdem01, cngdem02,
+         cngrep01, cngrep02, totvote) |>
+              mutate(across(starts_with("cng"), ~ as.numeric(.))) |>
+               group_by(county, cddist) |>
+  summarize(
+    dem_votes = rowSums(across(starts_with("cngdem")), na.rm = TRUE),
+    rep_votes = rowSums(across(starts_with("cngrep")), na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  group_by(cddist) |>
+  summarize(
+    dem = sum(dem_votes),
+    rep = sum(rep_votes),
+    total = dem + rep,
+    .groups = "drop"
+  )
 
+congressional <- congressional |>
+  mutate(dem_share = dem / total)
+
+meanmedian <- mean(congressional$dem_share) - median(congressional$dem_share)
+
+wasted_votes <- function(a, b) {
+  if (a > b) {
+    return(c(A = a - floor((a + b) / 2) - 1,
+             B = b))
+  } else {
+    return(c(A = a,
+             B = b - floor((a + b) / 2) - 1))
+  }
+}
+
+wasted <- congressional |>
+  rowwise() |>
+  mutate(
+    w = list(wasted_votes(dem, rep)),
+    wasted_dem = w[[1]]["A"],
+    wasted_rep = w[[1]]["B"]
+  ) |>
+  ungroup()
+
+efficiency_gap <- (sum(wasted$wasted_rep) - sum(wasted$wasted_dem)) /
+                  sum(wasted$total)
+meanmedian
+efficiency_gap
+
+```
 
 ### 2024 Election Results and the proposed 2025 District Map
 

@@ -5,24 +5,79 @@ format: typst
 
 ### Question 1
 
-Put your question here.
-
+How many districts featured two candidates from the same party?
 ### Answer 1
 
 Put your answer here.
 
-### Question 2
+```{r}
+candidates <- read_csv("data/g24-candidates-by-district.csv")
+candidates <- candidates |>
+  janitor::clean_names()
+candidates <- candidates |>
+  mutate(
+    party = str_extract(contest, "(DEM|REP|GRN|LIB|NPP|AIP|PAF)")
+  )
+same_party <- candidates |>
+  group_by(district_type, district) |>
+  summarize(n_parties = n_distinct(party), .groups = "drop") |>
+  filter(n_parties == 1)
 
-Put your question here.
+nrow(same_party)
+#there are 23 districts with two candidates from the same party.
+```
+### Question 2
+Which district had the closest race?
 
 ### Answer 2
 
-Put your answer here.
+District 02, with 459844 votes for first place, and 3289131 votes for second.
 
+```{r}
+votes <- read_csv("data/g24_sov_by_g24_svprec.csv") |>
+  clean_names()
+ass_cols <- votes |>
+  select(starts_with("ass"))
+ass_cols <- ass_cols |>
+  mutate(across(everything(), ~as.numeric(.)))
+ass_totals <- ass_cols |>
+  summarize(across(everything(), sum, na.rm = TRUE)) |>
+  pivot_longer(everything(), names_to = "candidate", values_to = "votes")
+ass_totals <- ass_totals |>
+  mutate(
+    district = str_extract(candidate, "\\d{2}"),  #2-digit district number
+    party = str_extract(candidate, "DEM|REP|GRN|LIB|NPP|AIP|PAF")
+  )
+  closest_races <- ass_totals |>
+  group_by(district) |>
+  arrange(desc(votes), .by_group = TRUE) |>
+  summarise(
+    first_place_votes = first(votes),
+    second_place_votes = nth(votes, 2),
+    margin = first_place_votes - second_place_votes,
+    first_party = first(party),
+    second_party = nth(party, 2)
+  ) |>
+  arrange(margin)
+closest_races|> slice_head(n = 1)
+```
 ### Question 3
 
-Put your question here.
-
+Do larger Precincts seem to have higher or lower turnout?
 ### Answer 3
 
-Put your answer here.
+
+```{r}
+votes <- votes |>
+  mutate(turnout = totvote / totreg)
+votes <- votes |> filter(totreg > 0)
+ggplot(votes, aes(x = totreg, y = turnout)) +
+  geom_point(alpha = 0.3) + 
+  labs(
+    title = "Turnout vs. Precinct Size",
+    x = "Number of Registered Voters",
+    y = "Turnout Rate"
+  ) +
+  theme_minimal()
+```
+According to the scatterplot, it looks like the turnout seems to be higher in precincts with smaller numbers of registered voters.
